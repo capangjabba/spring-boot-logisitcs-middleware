@@ -5,5 +5,5 @@ import com.example.logisticsmiddleware.dto.response.CourierRateResponse;
 import reactor.core.publisher.Mono;
 
 public interface CourierClient {
-    Mono<CourierRateResponse> getRates(RateRequestDto request);
+    Mono<CourierRateResponse> getRate(RateRequestDto request);
 }

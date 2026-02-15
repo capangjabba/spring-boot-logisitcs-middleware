@@ -25,12 +25,15 @@ public class RateRequestDto {
     @Positive(message = "weightKg must be greater than zero")
     private BigDecimal weightKg;
 
-    @PositiveOrZero(message = "lengthCm must be zero or positive")
+    @NotNull(message = "lengthCm is required")
+    @Positive(message = "lengthCm must be greater than zero")
     private BigDecimal lengthCm;
 
-    @PositiveOrZero(message = "widthCm must be zero or positive")
+    @NotNull(message = "widthCm is required")
+    @Positive(message = "widthCm must be greater than zero")
     private BigDecimal widthCm;
 
-    @PositiveOrZero(message = "heightCm must be zero or positive")
+    @NotNull(message = "heightCm is required")
+    @Positive(message = "heightCm must be greater than zero")
     private BigDecimal heightCm;
 }
