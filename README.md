@@ -1,73 +1,151 @@
-# Logistics Middleware
+# Spring Boot Logistics Middleware
 
-A simple Spring Boot-based courier rates aggregator middleware for Malaysian domestic shipments.
+A Spring Boot-based **courier rate aggregator** (middleware) for shipments — built as a learning project to practice real-world API integration patterns.
 
-## What It Is For
+> Status: **Learning project / WIP**  
+> Currently integrated: **CityLink** + **J&T** (more can be added)
 
-This middleware acts as a unified API gateway for fetching shipping rates from multiple courier providers (e.g., CityLink, J&T, PosLaju, etc.). 
+---
 
-The frontend (or any client) sends a single standardized request with basic shipment details (postcodes, country codes, weight, optional dimensions). The middleware:
-- Validates the input
-- Maps/transforms the data for each courier's specific API requirements
-- Calls the courier APIs **in parallel**
-- Collects successful responses
-- Returns a clean, sorted list of available rates
+## What this project does
 
-This decouples the frontend from individual courier quirks and provides a single source of truth for rate comparisons.
+Instead of your frontend integrating multiple courier platforms (each with different request/response formats), this service provides a **single, standardized API**:
 
-Example response:
+- Client sends *one request* (origin/destination, weight, dimensions)
+- Middleware transforms the request to each courier’s format
+- Calls courier endpoints **in parallel**
+- Returns a unified response sorted by **cheapest rate first**
+
+---
+
+## Features
+
+- ✅ Single REST endpoint for rate lookup
+- ✅ Parallel courier calls using **WebClient + Reactor**
+- ✅ Unified response shape (`courier`, `rate`)
+- ✅ Validation with **Jakarta Bean Validation**
+- ✅ Extensible design: add new couriers by implementing `CourierClient`
+- ✅ Dockerfile included
+
+---
+
+## Supported couriers (current)
+
+### CityLink
+- Uses a postcode → state mapping (required for CityLink request)
+- Note: current implementation applies a special destination postcode fallback for cross-state shipments
+
+### J&T
+- Fetches CSRF token + cookies from J&T shipping rates page
+- Posts request with required headers (XHR-style)
+- If response comes back as HTML, it parses the “Parcel” shipping rate from the returned table (Jsoup)
+
+> ⚠️ Because some integrations rely on public web endpoints / HTML structures, they can break if the courier website changes.
+
+---
+
+## API
+
+### Endpoint
+`GET /api/v1/logistic/rates`
+
+### Query parameters (required)
+| Name | Example | Notes |
+|------|---------|------|
+| `originCountryCode` | `MY` | ISO-3166 alpha-2 |
+| `originPostcode` | `43000` | |
+| `destinationCountryCode` | `MY` | ISO-3166 alpha-2 |
+| `destinationPostcode` | `50000` | |
+| `weightKg` | `1.2` | decimal allowed |
+| `lengthCm` | `10` | decimal allowed |
+| `widthCm` | `10` | decimal allowed |
+| `heightCm` | `10` | decimal allowed |
+
+### Example request
+```bash
+curl "http://localhost:8080/api/v1/logistic/rates?originCountryCode=MY&originPostcode=43000&destinationCountryCode=MY&destinationPostcode=50000&weightKg=1.2&lengthCm=10&widthCm=10&heightCm=10"
+```
+
+### Example response
 ```json
 {
   "data": [
-    {
-      "courier": "Citylink",
-      "rate": 24
-    }
+    { "courier": "CityLink", "rate": 24.00 },
+    { "courier": "J&T", "rate": 26.50 }
   ]
 }
 ```
 
-Current endpoint: `GET /api/v1/logistic/rates` with query params (e.g., `originPostcode`, `originCountryCode`, `weightKg`, etc.).
+## Running locally
 
-## For Learning Purposes
+### Prerequisites
 
-This project is built primarily as a **learning exercise** in modern Spring Boot architecture. It demonstrates real-world patterns such as:
-- Clean separation of concerns (controllers, services, clients, utils)
-- Reactive programming with WebClient and Project Reactor (parallel external calls)
-- Input validation with Jakarta Bean Validation
-- Resilient external API integration (timeouts, graceful degradation, detailed logging)
-- Scalable design for adding more couriers
-- Best practices (Lombok, logging, configuration, DTOs)
+- Java **21**
+    
+- Maven (or just use the Maven wrapper included)
+    
 
-## Design Overview
+### Run
 
-### Core Principles
-- **Standardized public API**: One simple `RateRequestDto` (validated) → no courier-specific fields leak to the client.
-- **Per-courier clients**: Each courier has its own class implementing `CourierClient` (returns `Mono<CourierRateResponse>`).
-- **Parallel aggregation**: `RateService` uses `Flux.merge` to call all clients concurrently → low latency even with many couriers.
-- **Reactive but pragmatic**: WebClient for non-blocking I/O, but block only once in the synchronous MVC controller.
-- **Resilience**: Individual courier failures are logged and ignored → always return partial results if possible.
-- **Extensibility**: Adding a new courier = new client class + add to merge in service.
+`./mvnw spring-boot:run`
 
-### Key Components
-- **`RateRequestDto`** (dto/request): Public input — minimal fields (postcodes, weight, optional dims).
-- **`CourierRateResponse` / `RatesApiResponse`** (dto/response): Simple, unified output.
-- **`RateController`**: Entry point — binds query params with `@ModelAttribute` + `@Valid`.
-- **`RateService`**: Orchestrates parallel calls, sorts by rate.
-- **`CourierClient` interface**: All courier clients implement this (reactive `Mono` return).
-- **Per-courier package** (e.g., `couriers/citylink`):
-  - Courier-specific request POJO (e.g., `CityLinkRequest`)
-  - Response POJO matching actual API JSON (nested for CityLink)
-  - Mapping logic + detailed logging
-- **`PostcodeStateMapper`**: Utility to resolve Malaysian state from postcode (required by some couriers like CityLink).
-- **`WebClientConfig`**: Centralized timeouts and connector setup.
+App runs on:
 
-### Tech Stack
-- Spring Boot 3.x (MVC + WebFlux for WebClient)
-- Lombok
-- Jakarta Validation
-- SLF4J logging
-- Reactor for reactive streams
+- `http://localhost:8080`
+    
 
-Run with `./mvnw spring-boot:run` and test with curl or Postman.
+---
+
+## Running with Docker
+
+Build:
+
+`docker build -t logistics-middleware .`
+
+Run:
+
+`docker run -p 8080:8080 logistics-middleware`
+
+Optional Java opts:
+
+`docker run -p 8080:8080 -e JAVA_OPTS="-Xms256m -Xmx512m" logistics-middleware`
+
+---
+
+## Project structure (high level)
+
+- `controllers/RateController`  
+    Exposes the REST endpoint and validates input
+    
+- `services/RateService`  
+    Calls all couriers in parallel, filters failures, sorts by rate
+    
+- `couriers/*`  
+    Each courier integration lives in its own package and implements `CourierClient`
+    
+- `utils/*`  
+    Shared helpers (postcode → state mapping, CSRF session helper, HTML parser, etc.)
+    
+
+---
+
+## Adding a new courier
+
+1. Create a new client class under `couriers/<courier_name>/`
+    
+2. Implement `CourierClient`:
+    
+    - Accept `RateRequestDto`
+        
+    - Return `Mono<CourierRateResponse>`
+        
+3. Plug it into `RateService`:
+    
+    - Add to the `Flux.merge(...)` list
+        
+4. Keep the external integration resilient:
+    
+    - log failures clearly
+        
+    - return `Mono.empty()` on courier failure so other couriers can still succeed
 
