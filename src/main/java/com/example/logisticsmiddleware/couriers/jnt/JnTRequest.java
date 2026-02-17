@@ -16,3 +16,5 @@ public class JnTRequest {
     private String height;
     private String item_value = "";
 }
+
+

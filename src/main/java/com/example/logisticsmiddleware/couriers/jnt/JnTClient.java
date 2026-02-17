@@ -13,6 +13,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import reactor.core.publisher.Mono;
 
@@ -32,6 +35,14 @@ public class JnTClient implements CourierClient {
     private final JntRateHtmlParser parser;
     @Override
     public Mono<CourierRateResponse> getRate(RateRequestDto request) {
+        String destIso2 = request.getDestinationCountryCode();
+        if (!"MY".equals(destIso2)) {
+            String jntDest = JntDestinationCountry.toJntCode(destIso2); // returns null if unsupported
+            if (jntDest == null) {
+                log.info("J&T skipped: unsupported destination country {}", destIso2);
+                return Mono.empty();
+            }
+        }
         return csrfSessionClient.startSession(TOKEN_PAGE_URL)
                 .doOnNext(session -> {log.info("Session: {}", session);})
                 .flatMap(session -> {
@@ -95,12 +106,56 @@ public class JnTClient implements CourierClient {
                 });
     }
 
-    private JnTRequest toJnTRequest(RateRequestDto request) {
-        String originState = stateMapper.getStateFromPostcode(request.getOriginPostcode());
-        JnTRequest r = new JnTRequest();
-        if (!request.getDestinationCountryCode().equals("MY")){
-            r.setShipping_type("International");
+    public enum JntDestinationCountry {
+        MY("MY", "MY"),   // domestic forced
+        SG("SG", "SIN"),
+        BN("BN", "BWN"),
+        HK("HK", "HKG"),
+        VN("VN", "VNM"),
+        CN("CN", "CHN"),
+        TH("TH", "THA"),
+        ID("ID", "IDN"),
+        PH("PH", "PHL");
+
+        private final String iso2;
+        private final String jntCode;
+
+        JntDestinationCountry(String iso2, String jntCode) {
+            this.iso2 = iso2;
+            this.jntCode = jntCode;
         }
+
+        public String iso2() { return iso2; }
+        public String jntCode() { return jntCode; }
+
+        private static final Map<String, JntDestinationCountry> BY_ISO2 =
+                java.util.Arrays.stream(values())
+                        .collect(Collectors.toMap(
+                                c -> c.iso2.toUpperCase(),
+                                Function.identity()
+                        ));
+
+        public static String toJntCode(String iso2) {
+            if (iso2 == null) return null;
+            var c = BY_ISO2.get(iso2.trim().toUpperCase());
+            return (c == null) ? null : c.jntCode();
+        }
+    }
+
+    private JnTRequest toJnTRequest(RateRequestDto request) {
+        JnTRequest r = new JnTRequest();
+        String destIso2 = request.getDestinationCountryCode();
+        if ("MY".equals(destIso2)) {
+            r.setShipping_rates_type("domestic");
+            r.setDestination_country("MY");
+            r.setShipping_type("EZ");
+        } else {
+            String jntDest = JntDestinationCountry.toJntCode(destIso2); // safe: already checked
+            r.setShipping_type("International");
+            r.setShipping_rates_type("international"); // confirm correct value for J&T
+            r.setDestination_country(jntDest);
+        }
+
         r.setSender_postcode(request.getOriginPostcode());
         r.setReceiver_postcode(request.getDestinationPostcode());
         r.setWeight(String.valueOf(request.getWeightKg()));

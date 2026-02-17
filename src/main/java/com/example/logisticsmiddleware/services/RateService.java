@@ -35,6 +35,7 @@ public class RateService {
 
         // Collect, sort, block once
         List<CourierRateResponse> rates = ratesFlux
+                .filter(r -> r.getRate() != null)
                 .collectList()
                 .block()  // only block here (fine in MVC)
                 .stream()
