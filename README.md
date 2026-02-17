@@ -1,4 +1,4 @@
-# Spring Boot Logistics Middleware
+# Spring Boot API Middleware
 
 A Spring Boot-based **courier rate aggregator** (middleware) for shipments — built as a learning project to practice real-world API integration patterns.
 
