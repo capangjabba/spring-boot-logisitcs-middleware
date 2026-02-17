@@ -32,6 +32,8 @@ public class CityLinkClient implements CourierClient {
         String originState = stateMapper.getStateFromPostcode(request.getOriginPostcode());
         String destState = stateMapper.getStateFromPostcode(request.getDestinationPostcode());
         if (originState == null || destState == null) {
+            log.warn("[{}] Skipped: cannot map state. originPostcode={} destPostcode={}",
+                    courierCode, request.getOriginPostcode(), request.getDestinationPostcode());
             return Mono.empty();
         }
 
@@ -50,8 +52,9 @@ public class CityLinkClient implements CourierClient {
         body.setHeight(request.getHeightCm().toPlainString());
 
         body.setParcel_weight(request.getWeightKg().toPlainString());
-
-        log.debug("Body : {}",body);
+        log.debug("[{}] Request: originState={} destState={} weightKg={} dims={}x{}x{}",
+                courierCode, originState, destState,
+                request.getWeightKg(), request.getLengthCm(), request.getWidthCm(), request.getHeightCm());
 
         String REQUEST_URL = "https://www.citylinkexpress.com/wp-json/wp/v2/getShippingRate";
         return webClient.post()
@@ -59,35 +62,40 @@ public class CityLinkClient implements CourierClient {
                 .bodyValue(body)
                 .exchangeToMono(clientResponse -> {
                     HttpStatusCode status = clientResponse.statusCode();
-                    log.info("<<< CityLink RESPONSE STATUS: {}", status);
+                    log.info("CityLink Response Status: {}", status);
 
                     if (status.isError()) {
                         return clientResponse.bodyToMono(String.class)
-                                .doOnNext(errorBody -> log.error("<<< ERROR RESPONSE BODY:\n{}", errorBody))
+                                .doOnNext(errorBody -> log.warn("[{}] HTTP {} errorBodySnippet={}",
+                                        courierCode, status.value(), errorBody))
                                 .then(Mono.empty());
                     }
 
                     return clientResponse.bodyToMono(CityLinkResponse.class)
-                            .doOnNext(resp -> log.info("<<< Parsed CityLinkResponse object: {}", resp))
-                            .flatMap(resp -> {
-                                if (resp != null && resp.getReq() != null && resp.getReq().getData() != null) {
-                                    Data data = resp.getReq().getData();
-
-                                    if ("00".equals(data.getCode()) && data.getRate() != null && data.getMessage() != null && data.getMessage().isEmpty()) {
-                                        log.info("Valid rate extracted: {} (estimated final days: {}, date: {})",
-                                                data.getRate(), data.getFinal_days(), data.getDayString());
-
-                                        return Mono.just(CourierRateResponse.builder()
-                                                .courier(getCourierCode())
-                                                .rate(data.getRate())
-                                                .build());
-                                    } else {
-                                        log.error("Invalid/success=false response: code={}, message='{}'", data.getCode(), data.getMessage());
-                                    }
-                                } else {
-                                    log.error("Malformed response structure: {}", resp);
+                            .flatMap(parsed -> {
+                                var data = (parsed != null && parsed.getReq() != null) ? parsed.getReq().getData() : null;
+                                if (data == null) {
+                                    log.warn("[{}] Malformed response (missing data)", courierCode);
+                                    return Mono.empty();
                                 }
-                                return Mono.empty();
+
+                                boolean ok = "00".equals(data.getCode())
+                                        && data.getRate() != null
+                                        && (data.getMessage() == null || data.getMessage().isEmpty());
+
+                                if (!ok) {
+                                    log.warn("[{}] Non-success: code={} message='{}'",
+                                            courierCode, data.getCode(), data.getMessage());
+                                    return Mono.empty();
+                                }
+
+                                log.info("[{}] Success: rate={} etaDays={} etaDate={}",
+                                        courierCode, data.getRate(), data.getFinal_days(), data.getDayString());
+
+                                return Mono.just(CourierRateResponse.builder()
+                                        .courier(getCourierCode())
+                                        .rate(data.getRate())
+                                        .build());
                             });
                 })
                 .onErrorResume(throwable -> {

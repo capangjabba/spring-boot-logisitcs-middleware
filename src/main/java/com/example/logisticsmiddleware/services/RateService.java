@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -25,7 +26,7 @@ public class RateService {
 
     // Temporary testing method – replace later with real courier aggregation
     public RatesApiResponse getRates(RateRequestDto dto) {
-        // TODO: Real implementation - call each courier client, collect rates, handle errors/failures
+        long start = System.nanoTime();
 
         Flux<CourierRateResponse> ratesFlux = Flux.merge(
                 cityLinkClient.getRate(dto),
@@ -41,6 +42,9 @@ public class RateService {
                 .stream()
                 .sorted(Comparator.comparing(CourierRateResponse::getRate))
                 .toList();
+        long ms = (System.nanoTime() - start) / 1_000_000;
+        BigDecimal best = rates.isEmpty() ? null : rates.get(0).getRate();
+        log.info("Rates done: returned={} bestRate={} durationMs={}", rates.size(), best, ms);
 
         RatesApiResponse response = new RatesApiResponse();
         response.setData(rates);

@@ -39,15 +39,30 @@ public class JnTClient implements CourierClient {
         if (!"MY".equals(destIso2)) {
             String jntDest = JntDestinationCountry.toJntCode(destIso2); // returns null if unsupported
             if (jntDest == null) {
-                log.info("J&T skipped: unsupported destination country {}", destIso2);
+                log.info("[{}] Skipped: unsupported destination country iso2={}", courierCode, destIso2);
                 return Mono.empty();
             }
         }
+        log.debug("[{}] Start: destIso2={} originPostcode={} destPostcode={} weightKg={} dimsCm={}x{}x{}",
+                courierCode, destIso2, request.getOriginPostcode(), request.getDestinationPostcode(),
+                request.getWeightKg(), request.getLengthCm(), request.getWidthCm(), request.getHeightCm());
+
         return csrfSessionClient.startSession(TOKEN_PAGE_URL)
-                .doOnNext(session -> {log.info("Session: {}", session);})
+                .doOnNext(session -> {
+                    // IMPORTANT: do not log token/cookie
+                    log.debug("[{}] CSRF session acquired", courierCode);
+                })
                 .flatMap(session -> {
                     JnTRequest jntReq = toJnTRequest(request);
                     jntReq.set_token(session.token());
+
+                    log.debug("[{}] Posting rates: type={} ratesType={} destCountry={} senderPostcode={} receiverPostcode={}",
+                            courierCode,
+                            jntReq.getShipping_type(),
+                            jntReq.getShipping_rates_type(),
+                            jntReq.getDestination_country(),
+                            jntReq.getSender_postcode(),
+                            jntReq.getReceiver_postcode());
 
                     return webClient.post()
                             .uri(RATE_POST_URL) // <-- MUST be the real JSON endpoint
@@ -63,15 +78,15 @@ public class JnTClient implements CourierClient {
                                 var headers = resp.headers().asHttpHeaders();
                                 var ct = headers.getContentType();
                                 var loc = headers.getFirst(HttpHeaders.LOCATION);
+                                var status = resp.statusCode();
 
                                 if (resp.statusCode().is3xxRedirection()) {
                                     return resp.bodyToMono(String.class).defaultIfEmpty("")
-                                            .flatMap(body -> Mono.error(new IllegalStateException(
-                                                    "J&T returned redirect: " + resp.statusCode()
-                                                            + " location=" + loc
-                                                            + " contentType=" + ct
-                                                            + " bodySnippet=" + body
-                                            )));
+                                            .flatMap(body -> {
+                                                log.warn("[{}] Redirect returned: status={} location={} bodySnippet={}",
+                                                        courierCode, status.value(), loc, body);
+                                                return Mono.empty();
+                                            });
                                 }
 
                                 // JSON path
@@ -84,14 +99,13 @@ public class JnTClient implements CourierClient {
                                         .flatMap(html -> {
                                             var rateOpt = parser.parcelShippingRate(html);
                                             if (rateOpt.isEmpty()) {
-                                                return Mono.error(new IllegalStateException(
-                                                        "Could not parse Parcel shipping rate from HTML. contentType=" + ct
-                                                ));
+                                                log.warn("[{}] Parse failed. contentType={} bodySnippet={}",
+                                                        courierCode, ct, html);
+                                                return Mono.empty();
                                             }
-
+                                            
                                             var rate = rateOpt.get();
-
-                                            log.info("Parsed J&T Parcel Shipping Rate = {}", rate);
+                                            log.info("[{}] Success(HTML): rate={}", courierCode, rate);
                                             CourierRateResponse out = new CourierRateResponse();
                                             // adjust to your DTO fields:
                                             // out.setCourierCode(courierCode);
@@ -148,20 +162,21 @@ public class JnTClient implements CourierClient {
         if ("MY".equals(destIso2)) {
             r.setShipping_rates_type("domestic");
             r.setDestination_country("MY");
-            r.setShipping_type("EZ");
+            r.setReceiver_postcode(request.getDestinationPostcode());
         } else {
             String jntDest = JntDestinationCountry.toJntCode(destIso2); // safe: already checked
-            r.setShipping_type("International");
             r.setShipping_rates_type("international"); // confirm correct value for J&T
             r.setDestination_country(jntDest);
+            r.setReceiver_postcode("12345");
         }
 
         r.setSender_postcode(request.getOriginPostcode());
-        r.setReceiver_postcode(request.getDestinationPostcode());
         r.setWeight(String.valueOf(request.getWeightKg()));
         r.setLength(String.valueOf(request.getLengthCm()));
         r.setWidth(String.valueOf(request.getWidthCm()));
         r.setHeight(String.valueOf(request.getHeightCm()));
+
+        log.info("Body JnT Request {}", r);
 
         return r;
     }

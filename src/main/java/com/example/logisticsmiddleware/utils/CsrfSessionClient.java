@@ -1,5 +1,6 @@
 package com.example.logisticsmiddleware.utils;
 
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -17,6 +18,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Component
+@Slf4j
 public class CsrfSessionClient {
 
     private final WebClient webClient;
@@ -26,6 +28,7 @@ public class CsrfSessionClient {
     }
 
     public Mono<SessionData> startSession(String pageUrl) {
+        log.info("Starting J&T CSRF Session");
         return webClient.get()
                 .uri(pageUrl)
                 .accept(MediaType.TEXT_HTML) // override your default JSON accept
