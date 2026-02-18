@@ -1,151 +1,95 @@
-# Spring Boot API Middleware
+# Logistics Middleware – Courier Rate Aggregator
 
-A Spring Boot-based **courier rate aggregator** (middleware) for shipments — built as a learning project to practice real-world API integration patterns.
+[![Java 21](https://img.shields.io/badge/Java-21-orange)](https://www.oracle.com/java/technologies/downloads/)
+[![Spring Boot 3](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen)](https://spring.io/projects/spring-boot)
 
-> Status: **Learning project / WIP**  
-> Currently integrated: **CityLink** + **J&T** (more can be added)
+A **Spring Boot-based middleware** that aggregates shipping rates from multiple couriers in Malaysia (and potentially beyond).  
+Built as a learning project to practice real-world API integrations, parallel reactive calls, unified responses, and extensible design.
 
----
+> **Status:** WIP  
+> Currently integrated: **CityLink** + **J&T**  
+> More couriers can (and should!) be added easily.
 
-## What this project does
+## Why this project exists
 
-Instead of your frontend integrating multiple courier platforms (each with different request/response formats), this service provides a **single, standardized API**:
+Instead of your frontend or app calling 3–5 different courier APIs (each with unique formats, auth, quirks), this service gives you:
 
-- Client sends *one request* (origin/destination, weight, dimensions)
-- Middleware transforms the request to each courier’s format
-- Calls courier endpoints **in parallel**
-- Returns a unified response sorted by **cheapest rate first**
+- **One standardized REST endpoint**
+- Parallel calls to all couriers
+- Unified, sorted response (cheapest first)
+- Graceful failure handling (one courier down → others still work)
 
----
+Perfect for e-commerce checkouts, logistics dashboards, or personal shipping comparison tools.
 
-## Features
-
-- ✅ Single REST endpoint for rate lookup
-- ✅ Parallel courier calls using **WebClient + Reactor**
-- ✅ Unified response shape (`courier`, `rate`)
-- ✅ Validation with **Jakarta Bean Validation**
-- ✅ Extensible design: add new couriers by implementing `CourierClient`
-- ✅ Dockerfile included
-
----
-
-## Supported couriers (current)
+## Supported Couriers (current)
 
 ### CityLink
-- Uses a postcode → state mapping (required for CityLink request)
-- Note: current implementation applies a special destination postcode fallback for cross-state shipments
+- Requires postcode → state mapping (included in utils)
+- Special fallback logic for cross-state shipments
 
 ### J&T
-- Fetches CSRF token + cookies from J&T shipping rates page
-- Posts request with required headers (XHR-style)
-- If response comes back as HTML, it parses the “Parcel” shipping rate from the returned table (Jsoup)
+- Scrapes CSRF token + cookies from public rates page
+- Submits XHR-style POST
+- Parses HTML table with **Jsoup** if JSON not available
+- **Warning:** HTML-based → fragile if site layout changes
 
-> ⚠️ Because some integrations rely on public web endpoints / HTML structures, they can break if the courier website changes.
-
----
+> ⚠️ **Scraping-based integrations can break** when courier websites update their HTML/CSS/JS.  
+> Monitor logs and consider official APIs when available.
 
 ## API
 
 ### Endpoint
-`GET /api/v1/logistic/rates`
+GET /api/v1/logistic/rates
+Swagger UI: `http://localhost:8080/swagger-ui/index.html` (or `/swagger-ui.html`)
 
-### Query parameters (required)
-| Name | Example | Notes |
-|------|---------|------|
-| `originCountryCode` | `MY` | ISO-3166 alpha-2 |
-| `originPostcode` | `43000` | |
-| `destinationCountryCode` | `MY` | ISO-3166 alpha-2 |
-| `destinationPostcode` | `50000` | |
-| `weightKg` | `1.2` | decimal allowed |
-| `lengthCm` | `10` | decimal allowed |
-| `widthCm` | `10` | decimal allowed |
-| `heightCm` | `10` | decimal allowed |
+### Required Query Parameters
 
-### Example request
+| Parameter                | Example    | Description                          | Notes                     |
+|--------------------------|------------|--------------------------------------|---------------------------|
+| originCountryCode        | MY         | ISO 3166-1 alpha-2                   | Currently only MY tested  |
+| originPostcode           | 50000      | Origin postcode                      | 5 digits (MY)             |
+| destinationCountryCode   | MY         | ISO 3166-1 alpha-2                   |                           |
+| destinationPostcode      | 43000      | Destination postcode                 | Format varies by country  |
+| weightKg                 | 1.2        | Weight in kilograms (decimal OK)     |                           |
+| lengthCm                 | 10         | Length in cm (decimal OK)            |                           |
+| widthCm                  | 10         | Width in cm                          |                           |
+| heightCm                 | 10         | Height in cm                         |                           |
+
+### Example Request
+
 ```bash
-curl "http://localhost:8080/api/v1/logistic/rates?originCountryCode=MY&originPostcode=43000&destinationCountryCode=MY&destinationPostcode=50000&weightKg=1.2&lengthCm=10&widthCm=10&heightCm=10"
+curl "http://localhost:8080/api/v1/logistic/rates?originCountryCode=MY&originPostcode=50000&destinationCountryCode=MY&destinationPostcode=43000&weightKg=1.2&lengthCm=10&widthCm=10&heightCm=10"
 ```
 
-### Example response
-```json
-{
-  "data": [
-    { "courier": "CityLink", "rate": 24.00 },
-    { "courier": "J&T", "rate": 26.50 }
-  ]
-}
+## Quick Start
+### Running Locally (without Docker)
+```bash
+git clone https://github.com/yourusername/logistics-middleware.git
+cd logistics-middleware
+./mvnw spring-boot:run
+```
+Open http://localhost:8080/swagger-ui/index.html
+
+### Running with Docker
+```bash
+# Build image
+docker build -t logistics-middleware .
+
+# Run
+docker run -p 8080:8080 logistics-middleware
+
+# With custom JVM options
+docker run -p 8080:8080 -e JAVA_OPTS="-Xms256m -Xmx512m" logistics-middleware
 ```
 
-## Running locally
+# Adding a New Courier
 
-### Prerequisites
+1. Create package couriers/<couriername-lowercase>
+2. Implement CourierClient interface:
+```java
+JavaMono<CourierRateResponse> getRate(RateRequestDto request);
+```
+3. Add your client to `RateServiceFlux.merge(...)` list
+4. Handle errors gracefully → return Mono.empty() on failure
 
-- Java **21**
-    
-- Maven (or just use the Maven wrapper included)
-    
-
-### Run
-
-`./mvnw spring-boot:run`
-
-App runs on:
-
-- `http://localhost:8080`
-    
-
----
-
-## Running with Docker
-
-Build:
-
-`docker build -t logistics-middleware .`
-
-Run:
-
-`docker run -p 8080:8080 logistics-middleware`
-
-Optional Java opts:
-
-`docker run -p 8080:8080 -e JAVA_OPTS="-Xms256m -Xmx512m" logistics-middleware`
-
----
-
-## Project structure (high level)
-
-- `controllers/RateController`  
-    Exposes the REST endpoint and validates input
-    
-- `services/RateService`  
-    Calls all couriers in parallel, filters failures, sorts by rate
-    
-- `couriers/*`  
-    Each courier integration lives in its own package and implements `CourierClient`
-    
-- `utils/*`  
-    Shared helpers (postcode → state mapping, CSRF session helper, HTML parser, etc.)
-    
-
----
-
-## Adding a new courier
-
-1. Create a new client class under `couriers/<courier_name>/`
-    
-2. Implement `CourierClient`:
-    
-    - Accept `RateRequestDto`
-        
-    - Return `Mono<CourierRateResponse>`
-        
-3. Plug it into `RateService`:
-    
-    - Add to the `Flux.merge(...)` list
-        
-4. Keep the external integration resilient:
-    
-    - log failures clearly
-        
-    - return `Mono.empty()` on courier failure so other couriers can still succeed
 
