@@ -64,17 +64,28 @@ hit() {
 # ---- test matrix ----
 
 # Domestic (MY -> MY), varying sizes / weights
-hit "Domestic small (5x5x5 cm, 0.5 kg)"     13200 MY 20596 MY 5 5 5 0.5
+hit "domestic small (5x5x5 cm, 0.5 kg)"     13200 MY 20596 MY 5 5 5 0.5
+hit "domestic small (5x5x5 cm, 0.5 kg)"     13200 MY 20596 MY 5 5 5 0.5
 hit "Domestic medium (20x15x10 cm, 2 kg)"   13200 MY 20596 MY 20 15 10 2
+hit "Domestic medium (20x15x10 cm, 2 kg)"   13200 MY 20596 MY 20 15 10 2
+hit "Domestic bulky (60x40x30 cm, 10 kg)"   13200 MY 20596 MY 60 40 30 10
 hit "Domestic bulky (60x40x30 cm, 10 kg)"   13200 MY 20596 MY 60 40 30 10
 
 # Domestic edge-ish cases (very light / very heavy)
 hit "Domestic very light (10x10x5 cm, 0.1 kg)" 13200 MY 20596 MY 10 10 5 0.1
+hit "Domestic very light (10x10x5 cm, 0.1 kg)" 13200 MY 20596 MY 10 10 5 0.1
+hit "Domestic heavy (40x40x40 cm, 25 kg)"       13200 MY 20596 MY 40 40 40 25
 hit "Domestic heavy (40x40x40 cm, 25 kg)"       13200 MY 20596 MY 40 40 40 25
 
 # International examples (MY -> SG, MY -> US, MY -> AU)
 # Note: destinationPostcode formats differ by country, but your API expects a single string.
 hit "International MY -> SG (small, 1 kg)"  13200 MY 018989 SG 10 10 10 1
+hit "International MY -> SG (small, 1 kg)"  13200 MY 018989 SG 10 10 10 1
+hit "International MY -> SG (small, 1 kg)"  13200 MY 018989 SG 10 10 10 1
+hit "International MY -> SG (small, 1 kg)"  13200 MY 018989 SG 10 10 10 1
+hit "International MY -> BN (medium, 3 kg)" 13200 MY 10001  BN 30 20 15 3
+hit "International MY -> BN (medium, 3 kg)" 13200 MY 10001  BN 30 20 15 3
+hit "International MY -> BN (medium, 3 kg)" 13200 MY 10001  BN 30 20 15 3
 hit "International MY -> BN (medium, 3 kg)" 13200 MY 10001  BN 30 20 15 3
 
 hit "Missing required param (should 400)"  50000 MY "" MY 10 10 10 1    # empty postcode

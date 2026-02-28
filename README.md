@@ -75,12 +75,34 @@ Open http://localhost:8080/swagger-ui/index.html
 # Build image
 docker build -t logistics-middleware .
 
-# Run
-docker run -p 8080:8080 logistics-middleware
+# Build Redis image
+docker build -t logistics-middleware-redis ./redis
+
+# Create a network once
+docker network create logistics-net
+
+# Run Redis first
+docker run -d --name logistics-redis --network logistics-net -p 6379:6379 logistics-middleware-redis
+
+# Run app and point it at Redis
+docker run --network logistics-net -p 8080:8080 \
+  -e REDIS_HOST=logistics-redis \
+  -e REDIS_PORT=6379 \
+  logistics-middleware
 
 # With custom JVM options
-docker run -p 8080:8080 -e JAVA_OPTS="-Xms256m -Xmx512m" logistics-middleware
+docker run --network logistics-net -p 8080:8080 \
+  -e REDIS_HOST=logistics-redis \
+  -e REDIS_PORT=6379 \
+  -e JAVA_OPTS="-Xms256m -Xmx512m" \
+  logistics-middleware
 ```
+
+### Redis Caching
+- Aggregated rate responses are cached in Redis by the full rate request payload.
+- Default TTL is `10m`.
+- Empty responses are not cached, so temporary courier failures do not poison the cache.
+- Configure Redis connection with `REDIS_HOST` and `REDIS_PORT`.
 
 # Adding a New Courier
 
@@ -91,5 +113,3 @@ JavaMono<CourierRateResponse> getRate(RateRequestDto request);
 ```
 3. Add your client to `RateServiceFlux.merge(...)` list
 4. Handle errors gracefully → return Mono.empty() on failure
-
-

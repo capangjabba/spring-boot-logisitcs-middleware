@@ -2,17 +2,17 @@ package com.example.logisticsmiddleware.services;
 
 import com.example.logisticsmiddleware.couriers.citylink.CityLinkClient;
 import com.example.logisticsmiddleware.couriers.jnt.JnTClient;
+import com.example.logisticsmiddleware.config.CacheConfig;
 import com.example.logisticsmiddleware.dto.request.RateRequestDto;
 import com.example.logisticsmiddleware.dto.response.CourierRateResponse;
 import com.example.logisticsmiddleware.dto.response.RatesApiResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
@@ -25,6 +25,11 @@ public class RateService {
     private final JnTClient jnTClient;
 
     // Temporary testing method – replace later with real courier aggregation
+    @Cacheable(
+            cacheNames = CacheConfig.SHIPPING_RATES_CACHE,
+            keyGenerator = "rateRequestCacheKeyGenerator",
+            unless = "#result == null || #result.data == null || #result.data.isEmpty()"
+    )
     public RatesApiResponse getRates(RateRequestDto dto) {
         long start = System.nanoTime();
 
